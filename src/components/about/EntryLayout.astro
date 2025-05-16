@@ -1,0 +1,38 @@
+---
+import BaseLayout from "@components/base/BaseLayout.astro";
+import StickyHeadTable from "../StickyHeadTable";
+import type { AboutEntry } from "@/types";
+
+interface Props {
+  entry: AboutEntry;
+}
+
+const { entry } = Astro.props;
+const { title,} = entry.data;
+---
+
+<BaseLayout title={title}>
+  <section class="section-sm">
+    <div class="container">
+      <div class="row justify-center">
+        <div class="glass rounded-lg text-center p-8 md:col-10 lg:col-7 intersect:animate-fadeUp opacity-0 intersect-no-queue">
+            <StickyHeadTable client:load />
+        </div>
+      </div>
+    </div>
+  </section>
+</BaseLayout>
+
+<style lang="scss">
+.table-wrapper {
+  width: 100%;
+  max-width: 1200px;
+  margin: auto;
+  padding: 1rem;
+
+  @media (max-width: 768px) {
+    padding: 0.5rem;
+  }
+}
+
+</style>
