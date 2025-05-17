@@ -1,4 +1,5 @@
 import * as React from "react";
+import AddProductForm from "./AddProductForm";
 import {
   Paper,
   Table,
@@ -15,6 +16,8 @@ import {
 } from "@mui/material";
 import InputAdornment from "@mui/material/InputAdornment";
 import SearchIcon from "@mui/icons-material/Search";
+import jsPDF from "jspdf";
+import html2canvas from "html2canvas";
 
 interface Column {
   id: "name" | "category" | "price" | "quantity" | "stock";
@@ -65,7 +68,13 @@ function createData(
   return { name, category, price, quantity, stock };
 }
 
-const rows: Data[] = [
+export default function StickyHeadTable() {
+  const [page, setPage] = React.useState(0);
+  const [rowsPerPage, setRowsPerPage] = React.useState(10);
+  const [searchTerm, setSearchTerm] = React.useState("");
+  const [stockFilter, setStockFilter] = React.useState("all");
+
+  const [rows, setRows] = React.useState<Data[]>([
   createData("Basic T-Shirt", "T-shirt", 19.99, 50, "in-stock"),
   createData("Slim Fit Jeans", "Pants", 49.99, 0, "out-of-stock"),
   createData("Cotton Hoodie", "Sweater", 39.99, 25, "in-stock"),
@@ -73,13 +82,7 @@ const rows: Data[] = [
   createData("Sports Shorts", "Shorts", 24.99, 18, "in-stock"),
   createData("Leather Jacket", "Outerwear", 89.99, 7, "in-stock"),
   createData("Linen Shirt", "Shirt", 34.99, 0, "out-of-stock"),
-];
-
-export default function StickyHeadTable() {
-  const [page, setPage] = React.useState(0);
-  const [rowsPerPage, setRowsPerPage] = React.useState(10);
-  const [searchTerm, setSearchTerm] = React.useState("");
-  const [stockFilter, setStockFilter] = React.useState("all");
+]);
 
   const handleChangePage = (event: unknown, newPage: number) => {
     setPage(newPage);
@@ -103,39 +106,76 @@ export default function StickyHeadTable() {
 
   const [voucherCode, setVoucherCode] = React.useState("");
   const [showVoucher, setShowVoucher] = React.useState(false);
+  const voucherRef = React.useRef<HTMLDivElement>(null);
   const totalPrice = filteredRows.reduce(
     (sum, row) => sum + row.price * row.quantity,
     0,
   );
+
+  const formatCurrency = (value: number) =>
+    new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+      minimumFractionDigits: 2,
+    }).format(value);
+
   return (
     <div className="table-container">
-      <div className="table-controls">
-        
-        <TextField
-          select
-          label="Stock Filter"
-          variant="outlined"
-          size="small"
-          value={stockFilter}
-          onChange={(e) => setStockFilter(e.target.value)}
-          className="stock-filter"
-        >
-          <MenuItem value="all">All</MenuItem>
-          <MenuItem value="in-stock">In Stock</MenuItem>
-          <MenuItem value="out-of-stock">Out of Stock</MenuItem>
-        </TextField>
-        <Button
-          variant="contained"
-          color="primary"
-          className="report-button"
-          onClick={() => {
-            const code = "VOUCHER-" + Math.floor(1000 + Math.random() * 9000);
-            setVoucherCode(code);
-            setShowVoucher(true);
-          }}
-        >
-          Export
-        </Button>
+      <div
+        className="table-controls"
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: "16px",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+          <TextField
+            select
+            label="Stock Filter"
+            variant="outlined"
+            size="small"
+            value={stockFilter}
+            onChange={(e) => setStockFilter(e.target.value)}
+          >
+            <MenuItem value="all">All</MenuItem>
+            <MenuItem value="in-stock">In Stock</MenuItem>
+            <MenuItem value="out-of-stock">Out of Stock</MenuItem>
+          </TextField>
+
+          <Button
+            variant="contained"
+            color="primary"
+            onClick={async () => {
+              const code = "VOUCHER-" + Math.floor(1000 + Math.random() * 9000);
+              setVoucherCode(code);
+              setShowVoucher(true); // <-- This is needed to render the voucherRef element
+
+              setTimeout(async () => {
+                if (voucherRef.current) {
+                  const canvas = await html2canvas(voucherRef.current);
+                  const imgData = canvas.toDataURL("image/png");
+                  const pdf = new jsPDF("p", "mm", "a4");
+
+                  const imgWidth = 190;
+                  const pageHeight = 297;
+                  const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+                  pdf.addImage(imgData, "PNG", 10, 10, imgWidth, imgHeight);
+                  pdf.save(`${code}.pdf`);
+
+                  setShowVoucher(false);
+                } else {
+                  console.error("Voucher ref is not available");
+                }
+              }, 300);
+            }}
+          >
+            Export
+          </Button>
+        </div>
+
         <TextField
           label="Search"
           variant="outlined"
@@ -150,16 +190,28 @@ export default function StickyHeadTable() {
             ),
             endAdornment: searchTerm && (
               <InputAdornment position="end">
-                <IconButton
-                  size="small"
-                  onClick={() => setSearchTerm("")}
-                ></IconButton>
+                <IconButton size="small" onClick={() => setSearchTerm("")}>
+                  <span style={{ fontWeight: "bold", fontSize: "16px" }}>
+                    ×
+                  </span>
+                </IconButton>
               </InputAdornment>
             ),
           }}
         />
-        
       </div>
+      <AddProductForm
+        onAdd={(newProduct) => {
+          const newRow = createData(
+            newProduct.name,
+            newProduct.category,
+            newProduct.price,
+            newProduct.quantity,
+            newProduct.stock,
+          );
+          setRows((prev) => [...prev, newRow]);
+        }}
+      />
 
       <Paper className="main-table" sx={{ width: "100%", overflow: "visible" }}>
         <TableContainer sx={{ maxHeight: 440 }}>
@@ -170,7 +222,7 @@ export default function StickyHeadTable() {
                   <TableCell
                     key={column.id}
                     align={column.align}
-                    style={{ minWidth: column.minWidth }}
+                    style={{ minWidth: column.minWidth, fontWeight: "bold" }}
                   >
                     {column.label}
                   </TableCell>
@@ -195,9 +247,24 @@ export default function StickyHeadTable() {
                         const value = row[column.id];
                         return (
                           <TableCell key={column.id} align={column.align}>
-                            {column.format && typeof value === "number"
-                              ? column.format(value)
-                              : value}
+                            {column.id === "stock" ? (
+                              <span
+                                style={{
+                                  color:
+                                    row.stock === "in-stock" ? "green" : "red",
+                                  fontWeight: "bold",
+                                }}
+                              >
+                                {value === "in-stock"
+                                  ? "In Stock"
+                                  : "Out of Stock"}
+                              </span>
+                            ) : column.id === "price" &&
+                              typeof value === "number" ? (
+                              formatCurrency(value)
+                            ) : (
+                              value
+                            )}
                           </TableCell>
                         );
                       })}
@@ -217,19 +284,38 @@ export default function StickyHeadTable() {
           onRowsPerPageChange={handleChangeRowsPerPage}
         />
       </Paper>
+
       {showVoucher && (
-        <div className="voucher-box">
-          <h3>
-            Voucher Code: <span>{voucherCode}</span>
-          </h3>
-          <table>
+        <div
+          ref={voucherRef}
+          style={{
+            position: "absolute",
+            left: "-9999px",
+            top: "0",
+            width: "600px",
+            backgroundColor: "#fff",
+            padding: "20px",
+          }}
+        >
+          <h3>Voucher Code: {voucherCode}</h3>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
               <tr>
                 {columns.map((col) => (
-                  <th key={col.id}>{col.label}</th>
+                  <th
+                    key={col.id}
+                    style={{
+                      textAlign: "left",
+                      borderBottom: "1px solid #ccc",
+                      padding: "6px",
+                    }}
+                  >
+                    {col.label}
+                  </th>
                 ))}
-                <th>Subtotal</th>
-                
+                <th style={{ borderBottom: "1px solid #ccc", padding: "6px" }}>
+                  Subtotal
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -238,27 +324,51 @@ export default function StickyHeadTable() {
                   {columns.map((col) => {
                     const value = row[col.id];
                     return (
-                      <td key={col.id}>
-                        {col.format && typeof value === "number"
-                          ? col.format(value)
-                          : value}
+                      <td
+                        key={col.id}
+                        style={{
+                          padding: "6px",
+                          color:
+                            col.id === "stock"
+                              ? value === "in-stock"
+                                ? "green"
+                                : "red"
+                              : "inherit",
+                          fontWeight: col.id === "stock" ? "bold" : "normal",
+                        }}
+                      >
+                        {col.id === "stock"
+                          ? value === "in-stock"
+                            ? "In Stock"
+                            : "Out of Stock"
+                          : col.id === "price" && typeof value === "number"
+                            ? formatCurrency(value)
+                            : value}
                       </td>
                     );
                   })}
-                  <td>${(row.price * row.quantity).toFixed(2)}</td>
+                  <td style={{ padding: "6px" }}>
+                    {formatCurrency(row.price * row.quantity)}
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
-          <p className="total-price">
-            Total Price: <strong>${totalPrice.toFixed(2)}</strong>
+          <p
+            style={{
+              fontWeight: "bold",
+              color: "#000",
+              fontSize: "18px",
+              marginTop: "16px",
+            }}
+          >
+            Total Price:{" "}
+            {formatCurrency(
+              filteredRows.reduce((sum, r) => sum + r.price * r.quantity, 0),
+            )}
           </p>
-          <Button size="small" onClick={() => setShowVoucher(false)}>
-            Close
-          </Button>
         </div>
       )}
     </div>
   );
 }
-
